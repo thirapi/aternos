@@ -1,3 +1,3 @@
-name = "aternos-proxy"
+name = "aternos"
 main = "index.js"
 compatibility_date = "2026-07-08"

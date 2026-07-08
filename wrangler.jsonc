@@ -1,14 +1,6 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "aternos",
+  "main": "worker/index.js",
   "compatibility_date": "2026-07-08",
-  "observability": {
-    "enabled": true
-  },
-  "assets": {
-    "directory": "frontend"
-  },
-  "compatibility_flags": [
-    "nodejs_compat"
-  ]
+  "compatibility_flags": ["nodejs_compat"]
 }
