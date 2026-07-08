@@ -1,13 +1,16 @@
 package aternos
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -17,9 +20,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dop251/goja"
-	srt "github.com/juzeon/spoofed-round-tripper"
-	tlsclient "github.com/bogdanfinn/tls-client"
-	"github.com/bogdanfinn/tls-client/profiles"
+	utls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -85,10 +87,13 @@ type ServerInfo struct {
 }
 
 type Client struct {
-	http  *http.Client
-	sec   string
-	token string
+	http    *http.Client
+	baseURL string
+	sec     string
+	token   string
 }
+
+var defaultBaseURL = "https://aternos.org/"
 
 func NewClient() (*Client, error) {
 	cookieStr := os.Getenv("ATERNOS_COOKIES")
@@ -96,17 +101,36 @@ func NewClient() (*Client, error) {
 		return nil, errors.New("ATERNOS_COOKIES environment variable is required")
 	}
 
+	baseURL := os.Getenv("ATERNOS_BASE_URL")
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	baseURL = strings.TrimRight(baseURL, "/") + "/"
+
 	jar, _ := cookiejar.New(nil)
-	u, _ := url.Parse("https://aternos.org/")
+	u, _ := url.Parse(baseURL)
 	jar.SetCookies(u, parseCookies(cookieStr))
 
-	tr, err := srt.NewSpoofedRoundTripper(
-		tlsclient.WithClientProfile(profiles.Chrome_120),
-		tlsclient.WithTimeoutSeconds(30),
-		tlsclient.WithNotFollowRedirects(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transport: %w", err)
+	tr := &http2.Transport{
+		IdleConnTimeout: 90 * time.Second,
+		ReadIdleTimeout: 10 * time.Second,
+		PingTimeout:     5 * time.Second,
+		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+			rawConn, err := net.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+			uconn := utls.UClient(rawConn, &utls.Config{
+				ServerName:         cfg.ServerName,
+				NextProtos:         cfg.NextProtos,
+				InsecureSkipVerify: cfg.InsecureSkipVerify,
+			}, utls.HelloChrome_120)
+			if err := uconn.HandshakeContext(ctx); err != nil {
+				rawConn.Close()
+				return nil, err
+			}
+			return uconn, nil
+		},
 	}
 
 	client := &http.Client{
@@ -124,7 +148,7 @@ func NewClient() (*Client, error) {
 		},
 	}
 
-	return &Client{http: client}, nil
+	return &Client{http: client, baseURL: baseURL}, nil
 }
 
 func parseCookies(cookieStr string) []*http.Cookie {
@@ -148,7 +172,7 @@ func parseCookies(cookieStr string) []*http.Cookie {
 }
 
 func (c *Client) newRequest(path string) (*http.Request, error) {
-	req, err := http.NewRequest("GET", "https://aternos.org/"+path, nil)
+	req, err := http.NewRequest("GET", c.baseURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -169,25 +193,6 @@ func (c *Client) newRequest(path string) (*http.Request, error) {
 	req.Header.Set("Sec-Fetch-Mode", "cors")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("Priority", "u=1, i")
-	req.Header["Header-Order:"] = []string{
-		"priority",
-		"accept",
-		"accept-encoding",
-		"accept-language",
-		"sec-ch-ua",
-		"sec-ch-ua-mobile",
-		"sec-ch-ua-platform",
-		"user-agent",
-		"sec-fetch-dest",
-		"sec-fetch-mode",
-		"sec-fetch-site",
-	}
-	req.Header["PHeader-Order:"] = []string{
-		":method",
-		":authority",
-		":scheme",
-		":path",
-	}
 	return req, nil
 }
 
@@ -241,7 +246,7 @@ func (c *Client) genSec() {
 	value := randomString(11) + "00000"
 	c.sec = fmt.Sprintf("%s:%s", key, value)
 
-	u, _ := url.Parse("https://aternos.org/")
+	u, _ := url.Parse(c.baseURL)
 	c.http.Jar.SetCookies(u, []*http.Cookie{
 		{Name: "ATERNOS_SEC_" + key, Value: value},
 	})
