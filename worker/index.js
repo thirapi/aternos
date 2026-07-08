@@ -27,7 +27,6 @@ export default {
 
     const respHeaders = new Headers(resp.headers)
     respHeaders.set('Access-Control-Allow-Origin', '*')
-    respHeaders.delete('access-control-allow-origin')
 
     return new Response(resp.body, {
       status: resp.status,
