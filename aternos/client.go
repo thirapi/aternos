@@ -285,13 +285,15 @@ func (c *Client) GetServerInfo() (ServerInfo, error) {
 		return ServerInfo{}, err
 	}
 
+	html, _ := doc.Html()
+
 	var script string
 	doc.Find("script:not([src])").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		script = strings.TrimSpace(s.Text())
 		return !strings.HasPrefix(script, "var lastStatus =")
 	})
 	if script == "" {
-		return ServerInfo{}, errors.New("failed to find server info in page")
+		return ServerInfo{}, fmt.Errorf("failed to find server info in page: page=%q", truncate(html, 1000))
 	}
 
 	data := strings.TrimSuffix(
