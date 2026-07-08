@@ -112,12 +112,14 @@ func NewClient() (*Client, error) {
 			}
 			tlsConn := utls.UClient(conn, &utls.Config{
 				ServerName: "aternos.org",
+				NextProtos: []string{"http/1.1"},
 			}, utls.HelloChrome_Auto)
 			if err := tlsConn.HandshakeContext(ctx); err != nil {
 				return nil, err
 			}
 			return tlsConn, nil
 		},
+		ForceAttemptHTTP2: false,
 	}
 
 	client := &http.Client{
