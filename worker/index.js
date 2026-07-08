@@ -9,9 +9,9 @@ export default {
       headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
       headers.set('Accept', '*/*')
       headers.set('Accept-Language', 'en-US,en;q=0.9')
-      headers.set('Accept-Encoding', 'gzip')
       headers.set('Referer', 'https://aternos.org/')
       headers.set('Origin', 'https://aternos.org')
+      headers.delete('Accept-Encoding')
 
       const clientHeaders = ['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
         'sec-ch-ua-platform-version', 'sec-ch-ua-arch', 'sec-ch-ua-bitness',
@@ -29,13 +29,26 @@ export default {
         redirect: 'follow',
       })
 
-      const text = await resp.text()
+      const contentType = resp.headers.get('Content-Type') || ''
+
+      let text
+      const ce = resp.headers.get('Content-Encoding')
+      if (ce && (ce.includes('gzip') || ce.includes('deflate') || ce.includes('br'))) {
+        const ds = new DecompressionStream(ce)
+        const decompressed = resp.body.pipeThrough(ds)
+        text = await new Response(decompressed).text()
+      } else {
+        text = await resp.text()
+      }
+
       const snippet = text.substring(0, 300).replace(/\n/g, ' ').substring(0, 200)
 
       const respHeaders = new Headers(resp.headers)
       respHeaders.set('Access-Control-Allow-Origin', '*')
+      respHeaders.delete('Content-Encoding')
       respHeaders.set('X-Debug-Status', String(resp.status))
       respHeaders.set('X-Debug-Length', String(text.length))
+      respHeaders.set('X-Debug-Content-Type', contentType)
       respHeaders.set('X-Debug-Snippet', snippet)
       respHeaders.set('X-Debug-URL', target.toString())
 

@@ -183,7 +183,7 @@ func (c *Client) newRequest(path string) (*http.Request, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip")
+	// Accept-Encoding dibiarin Go urus (gzip auto-decompress)
 	req.Header.Set("Sec-CH-UA", `"Chromium";v="120", "Google Chrome";v="120", "Not?A_Brand";v="99"`)
 	req.Header.Set("Sec-CH-UA-Mobile", "?0")
 	req.Header.Set("Sec-CH-UA-Platform", `"Windows"`)
