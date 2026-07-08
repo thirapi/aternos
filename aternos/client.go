@@ -2,14 +2,12 @@ package aternos
 
 import (
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -19,8 +17,9 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dop251/goja"
-	utls "github.com/refraction-networking/utls"
-	"golang.org/x/net/http2"
+	srt "github.com/juzeon/spoofed-round-tripper"
+	tlsclient "github.com/bogdanfinn/tls-client"
+	"github.com/bogdanfinn/tls-client/profiles"
 )
 
 var (
@@ -99,29 +98,19 @@ func NewClient() (*Client, error) {
 
 	jar, _ := cookiejar.New(nil)
 	u, _ := url.Parse("https://aternos.org/")
+	jar.SetCookies(u, parseCookies(cookieStr))
 
-	cookies := parseCookies(cookieStr)
-	jar.SetCookies(u, cookies)
-
-	transport := &http2.Transport{
-		DialTLS: func(network, addr string, _ *tls.Config) (net.Conn, error) {
-			rawConn, err := net.DialTimeout("tcp", addr, 30*time.Second)
-			if err != nil {
-				return nil, err
-			}
-			uconn := utls.UClient(rawConn, &utls.Config{
-				ServerName: "aternos.org",
-			}, utls.HelloChrome_Auto)
-			if err := uconn.Handshake(); err != nil {
-				rawConn.Close()
-				return nil, err
-			}
-			return uconn, nil
-		},
+	tr, err := srt.NewSpoofedRoundTripper(
+		tlsclient.WithClientProfile(profiles.Chrome_120),
+		tlsclient.WithTimeoutSeconds(30),
+		tlsclient.WithNotFollowRedirects(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transport: %w", err)
 	}
 
 	client := &http.Client{
-		Transport: transport,
+		Transport: tr,
 		Jar:       jar,
 		Timeout:   30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
