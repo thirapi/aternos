@@ -9,7 +9,7 @@ export default {
       headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
       headers.set('Accept', '*/*')
       headers.set('Accept-Language', 'en-US,en;q=0.9')
-      headers.set('Accept-Encoding', 'gzip, deflate, br, zstd')
+      headers.set('Accept-Encoding', 'gzip')
       headers.set('Referer', 'https://aternos.org/')
       headers.set('Origin', 'https://aternos.org')
 
