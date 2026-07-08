@@ -96,12 +96,12 @@ type Client struct {
 var defaultBaseURL = "https://aternos.org/"
 
 func NewClient() (*Client, error) {
-	cookieStr := os.Getenv("ATERNOS_COOKIES")
+	cookieStr := strings.TrimSpace(os.Getenv("ATERNOS_COOKIES"))
 	if cookieStr == "" {
 		return nil, errors.New("ATERNOS_COOKIES environment variable is required")
 	}
 
-	baseURL := os.Getenv("ATERNOS_BASE_URL")
+	baseURL := strings.TrimSpace(os.Getenv("ATERNOS_BASE_URL"))
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
