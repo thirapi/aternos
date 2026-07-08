@@ -106,15 +106,34 @@ func NewClient() (*Client, error) {
 
 	transport := &http.Transport{
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := dialer.DialContext(ctx, "tcp", addr)
+			rawConn, err := dialer.DialContext(ctx, "tcp", addr)
 			if err != nil {
 				return nil, err
 			}
-			tlsConn := utls.UClient(conn, &utls.Config{
+
+			spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
+			if err != nil {
+				rawConn.Close()
+				return nil, err
+			}
+			for i, ext := range spec.Extensions {
+				if _, ok := ext.(*utls.ALPNExtension); ok {
+					spec.Extensions[i] = &utls.ALPNExtension{
+						AlpnProtocols: []string{"http/1.1"},
+					}
+					break
+				}
+			}
+
+			tlsConn := utls.UClient(rawConn, &utls.Config{
 				ServerName: "aternos.org",
-				NextProtos: []string{"http/1.1"},
-			}, utls.HelloChrome_Auto)
+			}, utls.HelloCustom)
+			if err := tlsConn.ApplyPreset(&spec); err != nil {
+				rawConn.Close()
+				return nil, err
+			}
 			if err := tlsConn.HandshakeContext(ctx); err != nil {
+				rawConn.Close()
 				return nil, err
 			}
 			return tlsConn, nil
