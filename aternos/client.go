@@ -155,6 +155,11 @@ func (c *Client) newRequest(path string) (*http.Request, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("Priority", "u=1, i")
 	return req, nil
 }
 
@@ -170,7 +175,9 @@ func (c *Client) getDocument(path string) (*goquery.Document, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusForbidden {
-		return nil, ErrForbidden
+		body, _ := io.ReadAll(res.Body)
+		return nil, fmt.Errorf("%w: status=403 headers=%v body=%q",
+			ErrForbidden, res.Header, truncate(string(body), 500))
 	}
 
 	return goquery.NewDocumentFromReader(res.Body)
@@ -188,7 +195,9 @@ func (c *Client) getJSON(path string, v interface{}) error {
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusForbidden {
-		return ErrForbidden
+		body, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("%w: status=403 headers=%v body=%q",
+			ErrForbidden, res.Header, truncate(string(body), 500))
 	}
 
 	body, err := io.ReadAll(res.Body)
@@ -327,4 +336,11 @@ func randomString(length int) string {
 		result[i] = chars[n.Int64()]
 	}
 	return string(result)
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
