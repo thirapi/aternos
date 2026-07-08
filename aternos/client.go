@@ -1,7 +1,6 @@
 package aternos
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
@@ -10,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -20,29 +18,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dop251/goja"
-	utls "github.com/refraction-networking/utls"
 )
-
-type utlsAdapter struct {
-	*utls.UConn
-}
-
-func (a *utlsAdapter) ConnectionState() tls.ConnectionState {
-	s := a.UConn.ConnectionState()
-	return tls.ConnectionState{
-		Version:                     s.Version,
-		HandshakeComplete:           s.HandshakeComplete,
-		DidResume:                   s.DidResume,
-		CipherSuite:                 s.CipherSuite,
-		NegotiatedProtocol:          s.NegotiatedProtocol,
-		NegotiatedProtocolIsMutual:  s.NegotiatedProtocolIsMutual,
-		ServerName:                  s.ServerName,
-		PeerCertificates:            s.PeerCertificates,
-		VerifiedChains:              s.VerifiedChains,
-		SignedCertificateTimestamps: s.SignedCertificateTimestamps,
-		OCSPResponse:                s.OCSPResponse,
-	}
-}
 
 var (
 	ErrAlreadyStarted  = errors.New("server already started")
@@ -124,23 +100,11 @@ func NewClient() (*Client, error) {
 	cookies := parseCookies(cookieStr)
 	jar.SetCookies(u, cookies)
 
-	dialer := &net.Dialer{Timeout: 30 * time.Second}
-
 	transport := &http.Transport{
-		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := dialer.DialContext(ctx, "tcp", addr)
-			if err != nil {
-				return nil, err
-			}
-			tlsConn := utls.UClient(conn, &utls.Config{
-				ServerName: "aternos.org",
-			}, utls.HelloChrome_Auto)
-			if err := tlsConn.HandshakeContext(ctx); err != nil {
-				conn.Close()
-				return nil, err
-			}
-			return &utlsAdapter{tlsConn}, nil
+		TLSClientConfig: &tls.Config{
+			ServerName: "aternos.org",
 		},
+		ForceAttemptHTTP2: true,
 	}
 
 	client := &http.Client{
