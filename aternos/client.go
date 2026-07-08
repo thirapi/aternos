@@ -107,8 +107,12 @@ func NewClient() (*Client, error) {
 	}
 	baseURL = strings.TrimRight(baseURL, "/") + "/"
 
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ATERNOS_BASE_URL %q: %w", baseURL, err)
+	}
+
 	jar, _ := cookiejar.New(nil)
-	u, _ := url.Parse(baseURL)
 	jar.SetCookies(u, parseCookies(cookieStr))
 
 	tr := &http2.Transport{
