@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -18,6 +19,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dop251/goja"
+	utls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -100,11 +103,21 @@ func NewClient() (*Client, error) {
 	cookies := parseCookies(cookieStr)
 	jar.SetCookies(u, cookies)
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			ServerName: "aternos.org",
+	transport := &http2.Transport{
+		DialTLS: func(network, addr string, _ *tls.Config) (net.Conn, error) {
+			rawConn, err := net.DialTimeout("tcp", addr, 30*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			uconn := utls.UClient(rawConn, &utls.Config{
+				ServerName: "aternos.org",
+			}, utls.HelloChrome_Auto)
+			if err := uconn.Handshake(); err != nil {
+				rawConn.Close()
+				return nil, err
+			}
+			return uconn, nil
 		},
-		ForceAttemptHTTP2: true,
 	}
 
 	client := &http.Client{
