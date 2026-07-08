@@ -15,7 +15,7 @@ export default {
     const clientHeaders = ['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
       'sec-ch-ua-platform-version', 'sec-ch-ua-arch', 'sec-ch-ua-bitness',
       'sec-ch-ua-full-version', 'sec-ch-ua-full-version-list', 'sec-ch-ua-model',
-      'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'priority', 'cookie']
+      'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'priority']
     for (const h of clientHeaders) {
       const v = request.headers.get(h)
       if (v) headers.set(h, v)
@@ -25,13 +25,19 @@ export default {
       method: request.method,
       headers,
       body: request.body,
-      redirect: 'manual',
+      redirect: 'follow',
     })
+
+    const text = await resp.text()
+    const snippet = text.substring(0, 300)
 
     const respHeaders = new Headers(resp.headers)
     respHeaders.set('Access-Control-Allow-Origin', '*')
+    respHeaders.set('X-Debug-Status', String(resp.status))
+    respHeaders.set('X-Debug-Length', String(text.length))
+    respHeaders.set('X-Debug-Snippet', snippet.replace(/\n/g, ' ').substring(0, 200))
 
-    return new Response(resp.body, {
+    return new Response(text, {
       status: resp.status,
       headers: respHeaders,
     })
