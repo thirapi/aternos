@@ -3,6 +3,7 @@ package aternos
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,27 @@ import (
 	"github.com/dop251/goja"
 	utls "github.com/refraction-networking/utls"
 )
+
+type utlsAdapter struct {
+	*utls.UConn
+}
+
+func (a *utlsAdapter) ConnectionState() tls.ConnectionState {
+	s := a.UConn.ConnectionState()
+	return tls.ConnectionState{
+		Version:                     s.Version,
+		HandshakeComplete:           s.HandshakeComplete,
+		DidResume:                   s.DidResume,
+		CipherSuite:                 s.CipherSuite,
+		NegotiatedProtocol:          s.NegotiatedProtocol,
+		NegotiatedProtocolIsMutual:  s.NegotiatedProtocolIsMutual,
+		ServerName:                  s.ServerName,
+		PeerCertificates:            s.PeerCertificates,
+		VerifiedChains:              s.VerifiedChains,
+		SignedCertificateTimestamps: s.SignedCertificateTimestamps,
+		OCSPResponse:                s.OCSPResponse,
+	}
+}
 
 var (
 	ErrAlreadyStarted  = errors.New("server already started")
@@ -106,39 +128,19 @@ func NewClient() (*Client, error) {
 
 	transport := &http.Transport{
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			rawConn, err := dialer.DialContext(ctx, "tcp", addr)
+			conn, err := dialer.DialContext(ctx, "tcp", addr)
 			if err != nil {
 				return nil, err
 			}
-
-			spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
-			if err != nil {
-				rawConn.Close()
-				return nil, err
-			}
-			for i, ext := range spec.Extensions {
-				if _, ok := ext.(*utls.ALPNExtension); ok {
-					spec.Extensions[i] = &utls.ALPNExtension{
-						AlpnProtocols: []string{"http/1.1"},
-					}
-					break
-				}
-			}
-
-			tlsConn := utls.UClient(rawConn, &utls.Config{
+			tlsConn := utls.UClient(conn, &utls.Config{
 				ServerName: "aternos.org",
-			}, utls.HelloCustom)
-			if err := tlsConn.ApplyPreset(&spec); err != nil {
-				rawConn.Close()
-				return nil, err
-			}
+			}, utls.HelloChrome_Auto)
 			if err := tlsConn.HandshakeContext(ctx); err != nil {
-				rawConn.Close()
+				conn.Close()
 				return nil, err
 			}
-			return tlsConn, nil
+			return &utlsAdapter{tlsConn}, nil
 		},
-		ForceAttemptHTTP2: false,
 	}
 
 	client := &http.Client{
