@@ -56,9 +56,13 @@ type LoginResponse = {
 
 const LS_SESSION = 'aternos_session'
 const LS_SERVER = 'aternos_server'
+const LS_SERVERS = 'aternos_servers'
 
 function getSession() { return localStorage.getItem(LS_SESSION) || '' }
 function getServerID() { return localStorage.getItem(LS_SERVER) || '' }
+function getServers(): { id: string; name: string }[] {
+  try { return JSON.parse(localStorage.getItem(LS_SERVERS) || '[]') } catch { return [] }
+}
 
 async function api(path: string, opts: RequestInit = {}) {
   const headers: Record<string, string> = {}
@@ -179,7 +183,7 @@ function ServerPicker({ servers, onSelect, onLogout }: { servers: { id: string; 
   )
 }
 
-function ServerView({ onLogout }: { onLogout: () => void }) {
+function ServerView({ onLogout, onPickServer }: { onLogout: () => void; onPickServer: () => void }) {
   const [info, setInfo] = useState<ServerInfo | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -365,7 +369,10 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
                 </div>
               </div>
 
-              <div className="flex justify-center pt-2">
+              <div className="flex flex-col items-center gap-2 pt-2">
+                <Button size="sm" variant="ghost" icon={CubeIcon} onClick={onPickServer}>
+                  Change server
+                </Button>
                 <Button size="sm" variant="ghost" icon={SignOutIcon} onClick={onLogout}>
                   Logout
                 </Button>
@@ -380,13 +387,15 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
 
 export default function App() {
   const [session] = useState(() => getSession())
+  const savedServers = getServers()
   const [step, setStep] = useState<'login' | 'picker' | 'server'>(
-    session && getServerID() ? 'server' : session ? 'picker' : 'login'
+    session && getServerID() ? 'server' : session && savedServers.length > 0 ? 'picker' : session ? 'server' : 'login'
   )
-  const [pendingServers, setPendingServers] = useState<{ id: string; name: string }[]>([])
+  const [pendingServers, setPendingServers] = useState<{ id: string; name: string }[]>(savedServers)
 
   const handleLoginSuccess = (data: LoginResponse) => {
     const servers = data.servers || []
+    localStorage.setItem(LS_SERVERS, JSON.stringify(servers))
     if (data.server && servers.length <= 1) {
       localStorage.setItem(LS_SERVER, data.server)
       setStep('server')
@@ -406,8 +415,17 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem(LS_SESSION)
     localStorage.removeItem(LS_SERVER)
+    localStorage.removeItem(LS_SERVERS)
     setStep('login')
     setPendingServers([])
+  }
+
+  const handlePickServer = () => {
+    const servers = getServers()
+    if (servers.length > 0) {
+      setPendingServers(servers)
+      setStep('picker')
+    }
   }
 
   if (step === 'login' || (!session && step !== 'picker')) {
@@ -419,6 +437,6 @@ export default function App() {
   }
 
   return (
-    <ServerView onLogout={handleLogout} />
+    <ServerView onLogout={handleLogout} onPickServer={handlePickServer} />
   )
 }
