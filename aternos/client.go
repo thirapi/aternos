@@ -347,7 +347,7 @@ func (c *Client) GetServerInfo() (ServerInfo, error) {
 	var script string
 	doc.Find("script:not([src])").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		script = strings.TrimSpace(s.Text())
-		return !strings.HasPrefix(script, "var lastStatus =")
+		return !strings.Contains(script, "lastStatus")
 	})
 	if script == "" {
 		html, _ := doc.Html()
@@ -361,7 +361,7 @@ func (c *Client) GetServerInfo() (ServerInfo, error) {
 
 	var info ServerInfo
 	if err := json.Unmarshal([]byte(data), &info); err != nil {
-		return ServerInfo{}, err
+		return ServerInfo{}, fmt.Errorf("lastStatus parse error: %w (data=%q script=%q)", err, truncate(data, 500), truncate(script, 500))
 	}
 
 	c.genSec()
