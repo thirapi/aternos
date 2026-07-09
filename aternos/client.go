@@ -426,9 +426,21 @@ func (c *Client) Login(ctx context.Context, username, password string) (session 
 	}
 	defer res.Body.Close()
 
+	body, _ := io.ReadAll(res.Body)
+
 	if res.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(res.Body)
 		return "", fmt.Errorf("login failed (status=%d): %s", res.StatusCode, truncate(string(body), 500))
+	}
+
+	var loginResp map[string]interface{}
+	if err := json.Unmarshal(body, &loginResp); err == nil {
+		if success, ok := loginResp["success"].(bool); ok && !success {
+			msg, _ := loginResp["message"].(string)
+			if msg == "" {
+				msg = "unknown error"
+			}
+			return "", fmt.Errorf("login rejected: %s", msg)
+		}
 	}
 
 	for _, cookie := range res.Cookies() {
@@ -437,7 +449,7 @@ func (c *Client) Login(ctx context.Context, username, password string) (session 
 		}
 	}
 
-	return "", errors.New("no session cookie in response (check credentials)")
+	return "", fmt.Errorf("no session cookie in response: body=%q headers=%v", truncate(string(body), 300), res.Header)
 }
 
 func atob(s string) (string, error) {
