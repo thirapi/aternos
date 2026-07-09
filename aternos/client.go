@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -311,12 +311,21 @@ func (c *Client) extractAjaxToken(doc *goquery.Document) error {
 	}
 
 	window := `{
-  document: {getElementById: () => {}, documentURI: "https://aternos.org/go/"},
-  setTimeout: (f, t) => {},
-  setInterval: (f, i) => {},
-  clearTimeout: (f) => {},
-  clearInterval: (f) => {},
-  Map: function() {}
+  Map: function() {},
+  setTimeout: function(f,t) {},
+  setInterval: function(f,i) {},
+  clearTimeout: function(f) {},
+  clearInterval: function(f) {},
+  encodeURIComponent: function() {},
+  document: {
+    getElementById: function() {},
+    documentURI: "https://aternos.org/go/",
+    doctype: {},
+    currentScript: {},
+    prepend: function() {},
+    append: function() {},
+    appendChild: function() {}
+  }
 }`
 	exec := fmt.Sprintf("window = %s; %s window['AJAX_TOKEN'];", window, script)
 
@@ -462,7 +471,7 @@ func (c *Client) Login(ctx context.Context, username, password string) (session 
 }
 
 func atob(s string) (string, error) {
-	decoded, err := hex.DecodeString(s)
+	decoded, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
 		return "", err
 	}
