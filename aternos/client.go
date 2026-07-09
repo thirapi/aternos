@@ -520,9 +520,14 @@ func (c *Client) Login(ctx context.Context, username, password string) (session 
 		if success, ok := loginResp["success"].(bool); ok && !success {
 			msg, _ := loginResp["message"].(string)
 			if msg == "" {
+				if e, ok := loginResp["error"].(string); ok {
+					msg = e
+				}
+			}
+			if msg == "" {
 				msg = "unknown error"
 			}
-			return "", fmt.Errorf("login rejected: %s (body=%q headers=%v)", msg, string(body), res.Header)
+			return "", fmt.Errorf("login rejected: %s", msg)
 		}
 	}
 
