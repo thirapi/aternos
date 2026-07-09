@@ -426,7 +426,7 @@ func (c *Client) Login(ctx context.Context, username, password string) (session 
 	c.genSec()
 
 	passHash := fmt.Sprintf("%x", md5.Sum([]byte(password)))
-	form := url.Values{"user": {username}, "password": {passHash}}
+	form := url.Values{"username": {username}, "password": {passHash}}
 
 	path := fmt.Sprintf("ajax/account/login?SEC=%s&TOKEN=%s", c.sec, c.token)
 	req, err := c.newRequest("POST", path, strings.NewReader(form.Encode()))
@@ -457,7 +457,7 @@ func (c *Client) Login(ctx context.Context, username, password string) (session 
 			if msg == "" {
 				msg = "unknown error"
 			}
-			return "", fmt.Errorf("login rejected: %s", msg)
+			return "", fmt.Errorf("login rejected: %s (body=%q headers=%v)", msg, string(body), res.Header)
 		}
 	}
 
