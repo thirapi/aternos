@@ -369,11 +369,23 @@ function ServerView({ onLogout, onPickServer }: { onLogout: () => void; onPickSe
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-2 pt-2">
-                <Button size="sm" variant="ghost" icon={CubeIcon} onClick={onPickServer}>
+              <hr className="border-kumo-line" />
+
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1 justify-center"
+                  icon={CubeIcon}
+                  onClick={onPickServer}
+                >
                   Change server
                 </Button>
-                <Button size="sm" variant="ghost" icon={SignOutIcon} onClick={onLogout}>
+                <Button
+                  variant="destructive"
+                  className="flex-1 justify-center"
+                  icon={SignOutIcon}
+                  onClick={onLogout}
+                >
                   Logout
                 </Button>
               </div>
