@@ -90,15 +90,15 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-discover server IDs
-	ids, _ := client.ListServers()
+	serverList, _ := client.ListServers()
 
 	resp := map[string]interface{}{
 		"status":  "ok",
 		"session": session,
-		"servers": ids,
+		"servers": serverList,
 	}
-	if len(ids) > 0 {
-		resp["server"] = ids[0]
+	if len(serverList) > 0 {
+		resp["server"] = serverList[0].ID
 	}
 
 	writeJSON(w, http.StatusOK, resp)

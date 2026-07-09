@@ -49,7 +49,7 @@ type ServerInfo = {
 type LoginResponse = {
   status: string
   session: string
-  servers?: string[]
+  servers?: { id: string; name: string }[]
   server?: string
   error?: string
 }
@@ -149,7 +149,7 @@ function LoginView({ onLoginSuccess }: { onLoginSuccess: (data: LoginResponse) =
   )
 }
 
-function ServerPicker({ servers, onSelect, onLogout }: { servers: string[]; onSelect: (id: string) => void; onLogout: () => void }) {
+function ServerPicker({ servers, onSelect, onLogout }: { servers: { id: string; name: string }[]; onSelect: (id: string) => void; onLogout: () => void }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-kumo-page p-4">
       <LayerCard className="w-full max-w-sm">
@@ -161,10 +161,10 @@ function ServerPicker({ servers, onSelect, onLogout }: { servers: string[]; onSe
         </LayerCard.Secondary>
         <LayerCard.Primary>
           <div className="space-y-2">
-            {servers.map((id) => (
-              <Button key={id} className="w-full justify-center" variant="secondary" onClick={() => onSelect(id)}>
+            {servers.map((srv) => (
+              <Button key={srv.id} className="w-full justify-center" variant="secondary" onClick={() => onSelect(srv.id)}>
                 <CubeIcon size={16} className="mr-2" />
-                Server {id.substring(0, 8)}…
+                {srv.name}
               </Button>
             ))}
           </div>
@@ -383,7 +383,7 @@ export default function App() {
   const [step, setStep] = useState<'login' | 'picker' | 'server'>(
     session && getServerID() ? 'server' : session ? 'picker' : 'login'
   )
-  const [pendingServers, setPendingServers] = useState<string[]>([])
+  const [pendingServers, setPendingServers] = useState<{ id: string; name: string }[]>([])
 
   const handleLoginSuccess = (data: LoginResponse) => {
     const servers = data.servers || []

@@ -338,25 +338,49 @@ func (c *Client) extractAjaxToken(doc *goquery.Document) error {
 	return nil
 }
 
-func (c *Client) ListServers() ([]string, error) {
+type Server struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (c *Client) ListServers() ([]Server, error) {
 	doc, err := c.getDocument("servers/")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load servers page: %w", err)
 	}
 
-	var ids []string
+	var servers []Server
 	doc.Find("div.server-body").Each(func(i int, s *goquery.Selection) {
-		if id, ok := s.Attr("data-id"); ok && id != "" {
-			ids = append(ids, id)
+		id, ok := s.Attr("data-id")
+		if !ok || id == "" {
+			return
 		}
+		name := strings.TrimSpace(s.Find(".server-name").First().Text())
+		if name == "" {
+			name = strings.TrimSpace(s.Find("h3").First().Text())
+		}
+		if name == "" {
+			name = strings.TrimSpace(s.Find("h2").First().Text())
+		}
+		if name == "" {
+			name = "Server " + id[:min(8, len(id))]
+		}
+		servers = append(servers, Server{ID: id, Name: name})
 	})
 
-	if len(ids) == 0 {
+	if len(servers) == 0 {
 		html, _ := doc.Html()
 		return nil, fmt.Errorf("no servers found in page: page=%q", truncate(html, 1000))
 	}
 
-	return ids, nil
+	return servers, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (c *Client) GetServerInfo() (ServerInfo, error) {
