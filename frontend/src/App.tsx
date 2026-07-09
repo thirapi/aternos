@@ -238,7 +238,7 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
                   {st.label}
                 </Badge>
               )}
-              <Button size="sm" variant="ghost" shape="square" icon={ArrowsClockwiseIcon} onClick={fetchStatus} loading={loading}>
+              <Button size="sm" variant="ghost" shape="square" aria-label="Refresh" icon={ArrowsClockwiseIcon} onClick={fetchStatus} loading={loading}>
               </Button>
             </div>
           </div>
@@ -307,7 +307,7 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
 
               {needsConfirm && (
                 <Banner
-                  variant="warning"
+                  variant="alert"
                   icon={<ClockIcon weight="fill" />}
                   title="Ready to start"
                   description="Server is ready. Confirm to start."
