@@ -78,7 +78,8 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
       })
       if (data.session) {
         localStorage.setItem(LS_SESSION, data.session)
-        if (serverID) localStorage.setItem(LS_SERVER, serverID)
+        if (data.server) localStorage.setItem(LS_SERVER, data.server)
+        else if (serverID) localStorage.setItem(LS_SERVER, serverID)
         onLogin()
       } else {
         throw new Error(data.error || 'Login failed')

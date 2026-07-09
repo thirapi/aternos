@@ -81,10 +81,25 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{
+	// Auto-discover server IDs and set ATERNOS_SERVER cookie
+	serverID := ""
+	ids, err := client.ListServers()
+	if err == nil && len(ids) > 0 {
+		serverID = ids[0]
+	} else {
+		// Try to get server ID from header
+		serverID = r.Header.Get("X-Aternos-Server")
+	}
+
+	resp := map[string]string{
 		"status":  "ok",
 		"session": session,
-	})
+	}
+	if serverID != "" {
+		resp["server"] = serverID
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

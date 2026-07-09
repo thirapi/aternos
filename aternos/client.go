@@ -338,6 +338,27 @@ func (c *Client) extractAjaxToken(doc *goquery.Document) error {
 	return nil
 }
 
+func (c *Client) ListServers() ([]string, error) {
+	doc, err := c.getDocument("servers/")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load servers page: %w", err)
+	}
+
+	var ids []string
+	doc.Find("div.server-body").Each(func(i int, s *goquery.Selection) {
+		if id, ok := s.Attr("data-id"); ok && id != "" {
+			ids = append(ids, id)
+		}
+	})
+
+	if len(ids) == 0 {
+		html, _ := doc.Html()
+		return nil, fmt.Errorf("no servers found in page: page=%q", truncate(html, 1000))
+	}
+
+	return ids, nil
+}
+
 func (c *Client) GetServerInfo() (ServerInfo, error) {
 	doc, err := c.getDocument("server")
 	if err != nil {
