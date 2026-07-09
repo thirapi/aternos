@@ -264,6 +264,9 @@ func (c *Client) getJSON(path string, v interface{}) error {
 	if err != nil {
 		return err
 	}
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Referer", c.baseURL+"server")
+	req.Header.Set("Origin", c.baseURL[:len(c.baseURL)-1])
 	res, err := c.http.Do(req)
 	if err != nil {
 		return err
