@@ -310,7 +310,14 @@ func (c *Client) extractAjaxToken(doc *goquery.Document) error {
 		return err
 	}
 
-	window := "{document: {}, setTimeout: (f, t) => {}, setInterval: (f, i) => {}, clearTimeout: (f) => {}, clearInterval: (f) => {}, Map: () => {}}"
+	window := `{
+  document: {getElementById: () => {}, documentURI: "https://aternos.org/go/"},
+  setTimeout: (f, t) => {},
+  setInterval: (f, i) => {},
+  clearTimeout: (f) => {},
+  clearInterval: (f) => {},
+  Map: function() {}
+}`
 	exec := fmt.Sprintf("window = %s; %s window['AJAX_TOKEN'];", window, script)
 
 	v, err := vm.RunString(exec)
