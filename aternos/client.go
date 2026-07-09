@@ -426,6 +426,8 @@ func (c *Client) Login(ctx context.Context, username, password string) (session 
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Referer", "https://aternos.org/go/")
+	req.Header.Set("Origin", "https://aternos.org")
 
 	res, err := c.http.Do(req)
 	if err != nil {
