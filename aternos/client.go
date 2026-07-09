@@ -297,7 +297,7 @@ func (c *Client) genSec() {
 
 func (c *Client) extractAjaxToken(doc *goquery.Document) error {
 	var script string
-	doc.Find("script[type='text/javascript']").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	doc.Find("head script[type='text/javascript']").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		script = strings.TrimSpace(s.Text())
 		return !strings.Contains(script, "window")
 	})
