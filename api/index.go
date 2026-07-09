@@ -15,6 +15,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case path == "" || path == "/":
 		handleIndex(w, r)
+	case path == "/login":
+		handleLogin(w, r)
 	case path == "/start":
 		handleStart(w, r)
 	case path == "/stop":
@@ -32,11 +34,57 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		"name":    "aternos-api",
 		"version": "1.0.0",
 		"endpoints": map[string]string{
-			"GET  /api":       "this info",
-			"POST /api/start": "start server",
-			"POST /api/stop":  "stop server",
+			"GET  /api":        "this info",
+			"POST /api/login":  "login with username/password",
+			"POST /api/start":  "start server",
+			"POST /api/stop":   "stop server",
 			"GET  /api/status": "server status",
 		},
+	})
+}
+
+func getClient(r *http.Request) (*aternos.Client, error) {
+	session := r.Header.Get("X-Aternos-Session")
+	serverID := r.Header.Get("X-Aternos-Server")
+
+	if session != "" {
+		return aternos.NewClientWithSession(session, serverID), nil
+	}
+
+	return aternos.NewClient()
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Username == "" || body.Password == "" {
+		http.Error(w, "username and password required", http.StatusBadRequest)
+		return
+	}
+
+	client := aternos.NewClientWithSession("", "")
+
+	session, err := client.Login(r.Context(), body.Username, body.Password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"session": session,
 	})
 }
 
@@ -46,7 +94,7 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := aternos.NewClient()
+	client, err := getClient(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -67,7 +115,7 @@ func handleStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := aternos.NewClient()
+	client, err := getClient(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -88,7 +136,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := aternos.NewClient()
+	client, err := getClient(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

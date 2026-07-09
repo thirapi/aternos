@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Badge,
   Button,
+  Input,
   LayerCard,
   Banner,
 } from '@cloudflare/kumo'
@@ -12,6 +13,7 @@ import {
   CubeIcon,
   ClockIcon,
   XIcon,
+  KeyIcon,
 } from '@phosphor-icons/react'
 import './App.css'
 
@@ -41,7 +43,107 @@ type ServerInfo = {
   queue: { position: number; count: number; time: string }
 }
 
-function App() {
+const LS_SESSION = 'aternos_session'
+const LS_SERVER = 'aternos_server'
+
+function getSession() { return localStorage.getItem(LS_SESSION) || '' }
+function getServerID() { return localStorage.getItem(LS_SERVER) || '' }
+
+async function api(path: string, opts: RequestInit = {}) {
+  const headers: Record<string, string> = {}
+  const s = getSession()
+  const sid = getServerID()
+  if (s) headers['X-Aternos-Session'] = s
+  if (sid) headers['X-Aternos-Server'] = sid
+  const res = await fetch(path, { ...opts, headers: { ...headers, ...opts.headers as Record<string, string> } })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+function LoginView({ onLogin }: { onLogin: () => void }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [serverID, setServerID] = useState(getServerID())
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const handleLogin = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const data = await api('/api/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (data.session) {
+        localStorage.setItem(LS_SESSION, data.session)
+        if (serverID) localStorage.setItem(LS_SERVER, serverID)
+        onLogin()
+      } else {
+        throw new Error(data.error || 'Login failed')
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Login failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-kumo-page p-4">
+      <LayerCard className="w-full max-w-sm">
+        <LayerCard.Secondary>
+          <div className="flex items-center gap-2">
+            <KeyIcon size={18} weight="duotone" className="text-kumo-subtle" />
+            <span className="text-sm font-medium text-kumo-default">Login to Aternos</span>
+          </div>
+        </LayerCard.Secondary>
+        <LayerCard.Primary>
+          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); handleLogin() }}>
+            <Input
+              label="Aternos username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="secondary account"
+              required
+            />
+            <Input
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="********"
+              required
+            />
+            <Input
+              label="Server ID (optional — from Aternos URL)"
+              value={serverID}
+              onChange={(e) => setServerID(e.target.value)}
+              placeholder="e.g. PTuwDuPrarIFkv04"
+            />
+            {error && (
+              <Banner
+                variant="error"
+                icon={<ClockIcon weight="fill" />}
+                title="Error"
+                description={error}
+                action={
+                  <Button size="sm" variant="ghost" shape="square" icon={XIcon} aria-label="Dismiss" onClick={() => setError('')} />
+                }
+              />
+            )}
+            <Button className="w-full" type="submit" loading={busy}>
+              Login
+            </Button>
+          </form>
+        </LayerCard.Primary>
+      </LayerCard>
+    </div>
+  )
+}
+
+function ServerView({ onLogout }: { onLogout: () => void }) {
   const [info, setInfo] = useState<ServerInfo | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -49,9 +151,7 @@ function App() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/status')
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
+      const data = await api('/api/status')
       setInfo(data)
       setError('')
     } catch (e: unknown) {
@@ -63,16 +163,13 @@ function App() {
 
   useEffect(() => {
     fetchStatus()
-    const t = setInterval(fetchStatus, 8000)
-    return () => clearInterval(t)
   }, [fetchStatus])
 
   const handleAction = async (action: 'start' | 'stop') => {
     setActionLoading(action)
     setError('')
     try {
-      const res = await fetch(`/api/${action}`, { method: 'POST' })
-      if (!res.ok) throw new Error(await res.text())
+      await api(`/api/${action}`, { method: 'POST' })
       await new Promise((r) => setTimeout(r, 2000))
       await fetchStatus()
     } catch (e: unknown) {
@@ -118,7 +215,14 @@ function App() {
               title="Error"
               description={error}
               action={
-                <Button size="sm" variant="ghost" shape="square" icon={XIcon} aria-label="Dismiss" onClick={() => setError('')} />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" shape="square" icon={XIcon} aria-label="Dismiss" onClick={() => setError('')} />
+                  {error.toLowerCase().includes('unauthenticated') && (
+                    <Button size="sm" variant="secondary" onClick={onLogout}>
+                      Re-login
+                    </Button>
+                  )}
+                </div>
               }
             />
           )}
@@ -185,6 +289,12 @@ function App() {
                   Server is {st?.label.toLowerCase()}. Please wait…
                 </div>
               )}
+
+              <div className="flex justify-center pt-2">
+                <Button size="sm" variant="ghost" icon={KeyIcon} onClick={onLogout}>
+                  Switch account
+                </Button>
+              </div>
             </div>
           )}
         </LayerCard.Primary>
@@ -193,4 +303,17 @@ function App() {
   )
 }
 
-export default App
+export default function App() {
+  const [loggedIn, setLoggedIn] = useState(!!getSession())
+
+  if (!loggedIn) {
+    return <LoginView onLogin={() => setLoggedIn(true)} />
+  }
+
+  return (
+    <ServerView onLogout={() => {
+      localStorage.removeItem(LS_SESSION)
+      setLoggedIn(false)
+    }} />
+  )
+}

@@ -2,6 +2,7 @@ package aternos
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	mrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -95,26 +97,7 @@ type Client struct {
 
 var defaultBaseURL = "https://aternos.org/"
 
-func NewClient() (*Client, error) {
-	cookieStr := strings.TrimSpace(os.Getenv("ATERNOS_COOKIES"))
-	if cookieStr == "" {
-		return nil, errors.New("ATERNOS_COOKIES environment variable is required")
-	}
-
-	baseURL := strings.TrimSpace(os.Getenv("ATERNOS_BASE_URL"))
-	if baseURL == "" {
-		baseURL = defaultBaseURL
-	}
-	baseURL = strings.TrimRight(baseURL, "/") + "/"
-
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid ATERNOS_BASE_URL %q: %w", baseURL, err)
-	}
-
-	jar, _ := cookiejar.New(nil)
-	jar.SetCookies(u, parseCookies(cookieStr))
-
+func newHTTPClient(jar http.CookieJar) *http.Client {
 	tr := &http2.Transport{
 		IdleConnTimeout: 90 * time.Second,
 		ReadIdleTimeout: 10 * time.Second,
@@ -137,7 +120,7 @@ func NewClient() (*Client, error) {
 		},
 	}
 
-	client := &http.Client{
+	return &http.Client{
 		Transport: tr,
 		Jar:       jar,
 		Timeout:   30 * time.Second,
@@ -151,8 +134,58 @@ func NewClient() (*Client, error) {
 			return nil
 		},
 	}
+}
 
-	return &Client{http: client, baseURL: baseURL}, nil
+func NewClient() (*Client, error) {
+	cookieStr := strings.TrimSpace(os.Getenv("ATERNOS_COOKIES"))
+	if cookieStr == "" {
+		return nil, errors.New("ATERNOS_COOKIES environment variable is required")
+	}
+	return newClientFrom(cookieStr)
+}
+
+func NewClientFrom(cookies string) (*Client, error) {
+	return newClientFrom(cookies)
+}
+
+func newClientFrom(cookieStr string) (*Client, error) {
+	baseURL := strings.TrimSpace(os.Getenv("ATERNOS_BASE_URL"))
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	baseURL = strings.TrimRight(baseURL, "/") + "/"
+
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ATERNOS_BASE_URL %q: %w", baseURL, err)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	jar.SetCookies(u, parseCookies(cookieStr))
+
+	return &Client{http: newHTTPClient(jar), baseURL: baseURL}, nil
+}
+
+func NewClientWithSession(session, serverID string) *Client {
+	baseURL := strings.TrimSpace(os.Getenv("ATERNOS_BASE_URL"))
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	baseURL = strings.TrimRight(baseURL, "/") + "/"
+
+	u, _ := url.Parse(baseURL)
+
+	jar, _ := cookiejar.New(nil)
+	jar.SetCookies(u, []*http.Cookie{
+		{Name: "ATERNOS_SESSION", Value: session},
+	})
+	if serverID != "" {
+		jar.SetCookies(u, []*http.Cookie{
+			{Name: "ATERNOS_SERVER", Value: serverID},
+		})
+	}
+
+	return &Client{http: newHTTPClient(jar), baseURL: baseURL}
 }
 
 func parseCookies(cookieStr string) []*http.Cookie {
@@ -175,15 +208,19 @@ func parseCookies(cookieStr string) []*http.Cookie {
 	return cookies
 }
 
-func (c *Client) newRequest(path string) (*http.Request, error) {
-	req, err := http.NewRequest("GET", c.baseURL+path, nil)
+func randomDelay() {
+	d := time.Duration(2000+mrand.IntN(4000)) * time.Millisecond
+	time.Sleep(d)
+}
+
+func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest(method, c.baseURL+path, body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	// Accept-Encoding dibiarin Go urus (gzip auto-decompress)
 	req.Header.Set("Sec-CH-UA", `"Chromium";v="120", "Google Chrome";v="120", "Not?A_Brand";v="99"`)
 	req.Header.Set("Sec-CH-UA-Mobile", "?0")
 	req.Header.Set("Sec-CH-UA-Platform", `"Windows"`)
@@ -201,7 +238,8 @@ func (c *Client) newRequest(path string) (*http.Request, error) {
 }
 
 func (c *Client) getDocument(path string) (*goquery.Document, error) {
-	req, err := c.newRequest(path)
+	randomDelay()
+	req, err := c.newRequest("GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +259,8 @@ func (c *Client) getDocument(path string) (*goquery.Document, error) {
 }
 
 func (c *Client) getJSON(path string, v interface{}) error {
-	req, err := c.newRequest(path)
+	randomDelay()
+	req, err := c.newRequest("GET", path, nil)
 	if err != nil {
 		return err
 	}
@@ -289,14 +328,13 @@ func (c *Client) GetServerInfo() (ServerInfo, error) {
 		return ServerInfo{}, err
 	}
 
-	html, _ := doc.Html()
-
 	var script string
 	doc.Find("script:not([src])").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		script = strings.TrimSpace(s.Text())
 		return !strings.HasPrefix(script, "var lastStatus =")
 	})
 	if script == "" {
+		html, _ := doc.Html()
 		return ServerInfo{}, fmt.Errorf("failed to find server info in page: page=%q", truncate(html, 1000))
 	}
 
@@ -357,6 +395,49 @@ func (c *Client) StopServer() error {
 	path := fmt.Sprintf("ajax/server/stop?SEC=%s&TOKEN=%s", c.sec, c.token)
 	var result map[string]interface{}
 	return c.getJSON(path, &result)
+}
+
+func (c *Client) Login(ctx context.Context, username, password string) (session string, err error) {
+	doc, err := c.getDocument("go/")
+	if err != nil {
+		return "", fmt.Errorf("failed to load login page: %w", err)
+	}
+
+	if err := c.extractAjaxToken(doc); err != nil {
+		return "", fmt.Errorf("failed to extract token: %w", err)
+	}
+
+	c.genSec()
+
+	passHash := fmt.Sprintf("%x", md5.Sum([]byte(password)))
+	form := url.Values{"user": {username}, "password": {passHash}}
+
+	path := fmt.Sprintf("ajax/account/login?SEC=%s&TOKEN=%s", c.sec, c.token)
+	req, err := c.newRequest("POST", path, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("login request failed: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		return "", fmt.Errorf("login failed (status=%d): %s", res.StatusCode, truncate(string(body), 500))
+	}
+
+	for _, cookie := range res.Cookies() {
+		if cookie.Name == "ATERNOS_SESSION" && cookie.Value != "" {
+			return cookie.Value, nil
+		}
+	}
+
+	return "", errors.New("no session cookie in response (check credentials)")
 }
 
 func atob(s string) (string, error) {
