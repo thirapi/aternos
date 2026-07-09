@@ -386,10 +386,9 @@ function ServerView({ onLogout, onPickServer }: { onLogout: () => void; onPickSe
 }
 
 export default function App() {
-  const [session] = useState(() => getSession())
   const savedServers = getServers()
   const [step, setStep] = useState<'login' | 'picker' | 'server'>(
-    session && getServerID() ? 'server' : session && savedServers.length > 0 ? 'picker' : session ? 'server' : 'login'
+    getSession() && getServerID() ? 'server' : getSession() && savedServers.length > 0 ? 'picker' : getSession() ? 'server' : 'login'
   )
   const [pendingServers, setPendingServers] = useState<{ id: string; name: string }[]>(savedServers)
 
@@ -428,7 +427,7 @@ export default function App() {
     }
   }
 
-  if (step === 'login' || (!session && step !== 'picker')) {
+  if (step === 'login') {
     return <LoginView onLoginSuccess={handleLoginSuccess} />
   }
 
