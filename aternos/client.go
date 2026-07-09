@@ -368,7 +368,15 @@ func (c *Client) GetServerInfo() (ServerInfo, error) {
 	var script string
 	doc.Find("script:not([src])").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		script = strings.TrimSpace(s.Text())
-		return !strings.Contains(script, "lastStatus")
+		if !strings.Contains(script, "lastStatus") {
+			return true
+		}
+		val := strings.TrimSpace(strings.Replace(script, "var lastStatus =", "", 1))
+		if strings.HasPrefix(val, "{") {
+			return false
+		}
+		script = ""
+		return true
 	})
 	if script == "" {
 		html, _ := doc.Html()
