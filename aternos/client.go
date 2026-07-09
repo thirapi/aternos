@@ -442,6 +442,18 @@ func (c *Client) StopServer() error {
 	return c.getJSON(path, &result)
 }
 
+func (c *Client) ConfirmServer() error {
+	path := fmt.Sprintf("ajax/server/confirm?SEC=%s&TOKEN=%s", c.sec, c.token)
+	var result map[string]interface{}
+	return c.getJSON(path, &result)
+}
+
+func (c *Client) CancelQueue() error {
+	path := fmt.Sprintf("ajax/server/cancel-queue?SEC=%s&TOKEN=%s", c.sec, c.token)
+	var result map[string]interface{}
+	return c.getJSON(path, &result)
+}
+
 func (c *Client) Login(ctx context.Context, username, password string) (session string, err error) {
 	doc, err := c.getDocument("go/")
 	if err != nil {

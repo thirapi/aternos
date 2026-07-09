@@ -13,7 +13,10 @@ import {
   CubeIcon,
   ClockIcon,
   XIcon,
-  KeyIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowsClockwiseIcon,
+  SignOutIcon,
 } from '@phosphor-icons/react'
 import './App.css'
 
@@ -43,6 +46,14 @@ type ServerInfo = {
   queue: { position: number; count: number; time: string }
 }
 
+type LoginResponse = {
+  status: string
+  session: string
+  servers?: string[]
+  server?: string
+  error?: string
+}
+
 const LS_SESSION = 'aternos_session'
 const LS_SERVER = 'aternos_server'
 
@@ -56,14 +67,16 @@ async function api(path: string, opts: RequestInit = {}) {
   if (s) headers['X-Aternos-Session'] = s
   if (sid) headers['X-Aternos-Server'] = sid
   const res = await fetch(path, { ...opts, headers: { ...headers, ...opts.headers as Record<string, string> } })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  const text = await res.text()
+  if (!res.ok) {
+    try { const j = JSON.parse(text); throw new Error(j.error || text) } catch { throw new Error(text) }
+  }
+  return JSON.parse(text)
 }
 
-function LoginView({ onLogin }: { onLogin: () => void }) {
+function LoginView({ onLoginSuccess }: { onLoginSuccess: (data: LoginResponse) => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [serverID, setServerID] = useState(getServerID())
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -78,9 +91,7 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
       })
       if (data.session) {
         localStorage.setItem(LS_SESSION, data.session)
-        if (data.server) localStorage.setItem(LS_SERVER, data.server)
-        else if (serverID) localStorage.setItem(LS_SERVER, serverID)
-        onLogin()
+        onLoginSuccess(data)
       } else {
         throw new Error(data.error || 'Login failed')
       }
@@ -96,7 +107,7 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
       <LayerCard className="w-full max-w-sm">
         <LayerCard.Secondary>
           <div className="flex items-center gap-2">
-            <KeyIcon size={18} weight="duotone" className="text-kumo-subtle" />
+            <CubeIcon size={18} weight="duotone" className="text-kumo-subtle" />
             <span className="text-sm font-medium text-kumo-default">Login to Aternos</span>
           </div>
         </LayerCard.Secondary>
@@ -106,7 +117,7 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
               label="Aternos username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="secondary account"
+              placeholder="username"
               required
             />
             <Input
@@ -116,12 +127,6 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="********"
               required
-            />
-            <Input
-              label="Server ID (optional — from Aternos URL)"
-              value={serverID}
-              onChange={(e) => setServerID(e.target.value)}
-              placeholder="e.g. PTuwDuPrarIFkv04"
             />
             {error && (
               <Banner
@@ -144,13 +149,44 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
   )
 }
 
+function ServerPicker({ servers, onSelect, onLogout }: { servers: string[]; onSelect: (id: string) => void; onLogout: () => void }) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-kumo-page p-4">
+      <LayerCard className="w-full max-w-sm">
+        <LayerCard.Secondary>
+          <div className="flex items-center gap-2">
+            <CubeIcon size={18} weight="duotone" className="text-kumo-subtle" />
+            <span className="text-sm font-medium text-kumo-default">Select Server</span>
+          </div>
+        </LayerCard.Secondary>
+        <LayerCard.Primary>
+          <div className="space-y-2">
+            {servers.map((id) => (
+              <Button key={id} className="w-full justify-center" variant="secondary" onClick={() => onSelect(id)}>
+                <CubeIcon size={16} className="mr-2" />
+                Server {id.substring(0, 8)}…
+              </Button>
+            ))}
+          </div>
+          <div className="flex justify-center pt-4">
+            <Button size="sm" variant="ghost" icon={SignOutIcon} onClick={onLogout}>
+              Logout
+            </Button>
+          </div>
+        </LayerCard.Primary>
+      </LayerCard>
+    </div>
+  )
+}
+
 function ServerView({ onLogout }: { onLogout: () => void }) {
   const [info, setInfo] = useState<ServerInfo | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState<'start' | 'stop' | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const fetchStatus = useCallback(async () => {
+    setLoading(true)
     try {
       const data = await api('/api/status')
       setInfo(data)
@@ -166,23 +202,26 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
     fetchStatus()
   }, [fetchStatus])
 
-  const handleAction = async (action: 'start' | 'stop') => {
+  const doAction = async (action: string) => {
     setActionLoading(action)
     setError('')
     try {
       await api(`/api/${action}`, { method: 'POST' })
-      await new Promise((r) => setTimeout(r, 2000))
+      if (action === 'start' || action === 'confirm') {
+        await new Promise((r) => setTimeout(r, 2000))
+      }
       await fetchStatus()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : `Failed to ${action} server`)
+      setError(e instanceof Error ? e.message : `Failed to ${action}`)
     } finally {
       setActionLoading(null)
     }
   }
 
   const st = info ? STATUS_MAP[info.status] ?? { label: 'Unknown', badge: 'neutral' as const } : null
-  const isTransitioning = info && ![0, 1].includes(info.status)
   const q = info?.queue
+  const inQueue = info?.status === 10 && q && q.count > 0
+  const needsConfirm = info?.status === 10 && (!q || q.count === 0)
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-kumo-page p-4">
@@ -193,23 +232,27 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
               <CubeIcon size={18} weight="duotone" className="text-kumo-subtle" />
               <span className="text-sm font-medium text-kumo-default">{info?.name || 'Minecraft Server'}</span>
             </div>
-            {st && (
-              <Badge variant={st.badge} appearance="dot">
-                {st.label}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {st && (
+                <Badge variant={st.badge} appearance="dot">
+                  {st.label}
+                </Badge>
+              )}
+              <Button size="sm" variant="ghost" shape="square" icon={ArrowsClockwiseIcon} onClick={fetchStatus} loading={loading}>
+              </Button>
+            </div>
           </div>
         </LayerCard.Secondary>
 
         <LayerCard.Primary>
-          {loading && (
+          {loading && !info && (
             <div className="flex items-center justify-center py-8 text-sm text-kumo-subtle">
               <ClockIcon size={18} className="mr-2 animate-spin" weight="bold" />
               Loading…
             </div>
           )}
 
-          {error && !loading && (
+          {error && (
             <Banner
               variant="error"
               icon={<ClockIcon weight="fill" />}
@@ -228,7 +271,7 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
             />
           )}
 
-          {info && !loading && (
+          {info && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                 <span className="text-kumo-subtle">IP</span>
@@ -252,48 +295,79 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
                 </div>
               )}
 
-              {q && q.count > 0 && (
-                <div className="rounded-lg bg-kumo-fill px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between text-kumo-subtle">
-                    <span>Queue</span>
-                    <span>{q.position} / {q.count}</span>
+              {inQueue && q && (
+                <div className="rounded-lg bg-kumo-fill px-4 py-3 text-sm space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-kumo-subtle">Queue position</span>
+                    <span className="font-semibold">{q.position} / {q.count}</span>
                   </div>
-                  {q.time && <div className="text-xs text-kumo-subtle">{q.time}</div>}
+                  {q.time && <div className="text-xs text-kumo-subtle">Est. time: {q.time}</div>}
                 </div>
               )}
 
-              <div className="flex gap-3 pt-1">
-                <Button
-                  variant="primary"
-                  className="flex-1"
-                  icon={PlayCircleIcon}
-                  loading={actionLoading === 'start'}
-                  disabled={info.status !== 0 || actionLoading !== null}
-                  onClick={() => handleAction('start')}
-                >
-                  Start
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  icon={StopCircleIcon}
-                  loading={actionLoading === 'stop'}
-                  disabled={info.status !== 1 || actionLoading !== null}
-                  onClick={() => handleAction('stop')}
-                >
-                  Stop
-                </Button>
+              {needsConfirm && (
+                <Banner
+                  variant="warning"
+                  icon={<ClockIcon weight="fill" />}
+                  title="Ready to start"
+                  description="Server is ready. Confirm to start."
+                />
+              )}
+
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex gap-2">
+                  {info.status === 0 && (
+                    <Button
+                      variant="primary"
+                      className="flex-1 justify-center py-2"
+                      icon={PlayCircleIcon}
+                      loading={actionLoading === 'start'}
+                      onClick={() => doAction('start')}
+                    >
+                      Start
+                    </Button>
+                  )}
+                  {info.status === 1 && (
+                    <Button
+                      variant="destructive"
+                      className="flex-1 justify-center py-2"
+                      icon={StopCircleIcon}
+                      loading={actionLoading === 'stop'}
+                      onClick={() => doAction('stop')}
+                    >
+                      Stop
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {needsConfirm && (
+                    <Button
+                      variant="primary"
+                      className="flex-1 justify-center py-2"
+                      icon={CheckCircleIcon}
+                      loading={actionLoading === 'confirm'}
+                      onClick={() => doAction('confirm')}
+                    >
+                      Confirm
+                    </Button>
+                  )}
+                  {inQueue && (
+                    <Button
+                      variant="destructive"
+                      className="flex-1 justify-center py-2"
+                      icon={XCircleIcon}
+                      loading={actionLoading === 'cancel-queue'}
+                      onClick={() => doAction('cancel-queue')}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </div>
 
-              {isTransitioning && (
-                <div className="rounded-lg bg-kumo-fill px-3 py-2 text-center text-xs text-kumo-subtle">
-                  Server is {st?.label.toLowerCase()}. Please wait…
-                </div>
-              )}
-
               <div className="flex justify-center pt-2">
-                <Button size="sm" variant="ghost" icon={KeyIcon} onClick={onLogout}>
-                  Switch account
+                <Button size="sm" variant="ghost" icon={SignOutIcon} onClick={onLogout}>
+                  Logout
                 </Button>
               </div>
             </div>
@@ -305,16 +379,46 @@ function ServerView({ onLogout }: { onLogout: () => void }) {
 }
 
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(!!getSession())
+  const [session] = useState(() => getSession())
+  const [step, setStep] = useState<'login' | 'picker' | 'server'>(
+    session && getServerID() ? 'server' : session ? 'picker' : 'login'
+  )
+  const [pendingServers, setPendingServers] = useState<string[]>([])
 
-  if (!loggedIn) {
-    return <LoginView onLogin={() => setLoggedIn(true)} />
+  const handleLoginSuccess = (data: LoginResponse) => {
+    const servers = data.servers || []
+    if (data.server && servers.length <= 1) {
+      localStorage.setItem(LS_SERVER, data.server)
+      setStep('server')
+    } else if (servers.length > 1) {
+      setPendingServers(servers)
+      setStep('picker')
+    } else {
+      setStep('login')
+    }
+  }
+
+  const handleServerSelect = (id: string) => {
+    localStorage.setItem(LS_SERVER, id)
+    setStep('server')
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem(LS_SESSION)
+    localStorage.removeItem(LS_SERVER)
+    setStep('login')
+    setPendingServers([])
+  }
+
+  if (step === 'login' || (!session && step !== 'picker')) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />
+  }
+
+  if (step === 'picker' && pendingServers.length > 0) {
+    return <ServerPicker servers={pendingServers} onSelect={handleServerSelect} onLogout={handleLogout} />
   }
 
   return (
-    <ServerView onLogout={() => {
-      localStorage.removeItem(LS_SESSION)
-      setLoggedIn(false)
-    }} />
+    <ServerView onLogout={handleLogout} />
   )
 }

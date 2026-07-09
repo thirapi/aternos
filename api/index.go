@@ -23,22 +23,30 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		handleStop(w, r)
 	case path == "/status":
 		handleStatus(w, r)
+	case path == "/confirm":
+		handleConfirm(w, r)
+	case path == "/cancel-queue":
+		handleCancelQueue(w, r)
+	case path == "/servers":
+		handleServers(w, r)
 	default:
-		http.Error(w, "not found", http.StatusNotFound)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	}
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"name":    "aternos-api",
 		"version": "1.0.0",
 		"endpoints": map[string]string{
-			"GET  /api":        "this info",
-			"POST /api/login":  "login with username/password",
-			"POST /api/start":  "start server",
-			"POST /api/stop":   "stop server",
-			"GET  /api/status": "server status",
+			"GET  /api":             "this info",
+			"POST /api/login":       "login with username/password",
+			"GET  /api/servers":     "list servers",
+			"POST /api/start":       "start server",
+			"POST /api/stop":        "stop server",
+			"POST /api/confirm":     "confirm server start",
+			"POST /api/cancel-queue":"cancel queue",
+			"GET  /api/status":      "server status",
 		},
 	})
 }
@@ -81,22 +89,16 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-discover server IDs and set ATERNOS_SERVER cookie
-	serverID := ""
-	ids, err := client.ListServers()
-	if err == nil && len(ids) > 0 {
-		serverID = ids[0]
-	} else {
-		// Try to get server ID from header
-		serverID = r.Header.Get("X-Aternos-Server")
-	}
+	// Auto-discover server IDs
+	ids, _ := client.ListServers()
 
-	resp := map[string]string{
+	resp := map[string]interface{}{
 		"status":  "ok",
 		"session": session,
+		"servers": ids,
 	}
-	if serverID != "" {
-		resp["server"] = serverID
+	if len(ids) > 0 {
+		resp["server"] = ids[0]
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -110,44 +112,103 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func handleStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 
 	client, err := getClient(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	if err := client.StartServer(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "server start requested"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "server start requested"})
 }
 
 func handleStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 
 	client, err := getClient(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	if err := client.StopServer(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "server stop requested"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "server stop requested"})
+}
+
+func handleConfirm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	client, err := getClient(r)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if err := client.ConfirmServer(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "server confirmed"})
+}
+
+func handleCancelQueue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	client, err := getClient(r)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if err := client.CancelQueue(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "queue cancelled"})
+}
+
+func handleServers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	client, err := getClient(r)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	ids, err := client.ListServers()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"servers": ids})
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
